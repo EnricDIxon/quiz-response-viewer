@@ -77,7 +77,8 @@ The source repository is [EnricDIxon/quiz-response-viewer](https://github.com/En
 
 ## Accounts and password storage
 
-- Administrators can add accounts individually or import an email list with an `Email` column. Adding an email approves the account but does not set a password; the administrator must set one before that user can sign in.
+- Administrators can approve accounts individually or import an email list with an `Email` column. Users then open the app's **Set up your password** page, enter their approved email and name, and choose their own password. Registration is only allowed once for an approved email.
+- Users sign in through the separate **User sign in** page after setting up their password.
 - Users authenticate with their approved email and password. Email addresses are normalized to lowercase.
 - User profile records and password credentials are stored separately in D1. Passwords are never stored in plaintext: the Worker uses salted PBKDF2-SHA-256 with 100,000 iterations, the maximum supported by the Workers Web Crypto runtime.
 - Session tokens are random, held in `HttpOnly`, `SameSite=Strict` cookies, and stored in D1 only as SHA-256 digests. Sessions expire after seven days. Login failures are rate-limited.

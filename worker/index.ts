@@ -319,6 +319,56 @@ async function login(request: Request, env: Env): Promise<Response> {
   )
 }
 
+async function registerUser(request: Request, env: Env): Promise<Response> {
+  requireSameOrigin(request)
+  const body = await readJson<{ email?: string; name?: string; password?: string }>(request)
+  const email = normalizeEmail(typeof body.email === 'string' ? body.email : '')
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const password = typeof body.password === 'string' ? body.password : ''
+  if (!validEmail(email) || !name || name.length > 100 || password.length < 8 || password.length > 128) {
+    throw new HttpError(400, 'Provide a valid email, a name, and a password between 8 and 128 characters.')
+  }
+
+  const user = await env.DB.prepare(
+    `SELECT users.id, users.role
+     FROM users
+     LEFT JOIN credentials ON credentials.user_id = users.id
+     WHERE users.email = ? AND credentials.user_id IS NULL`,
+  )
+    .bind(email)
+    .first<{ id: string; role: 'admin' | 'user' }>()
+  if (!user || user.role !== 'user') {
+    throw new HttpError(409, 'This email is not approved for registration or its account is already set up. Contact your administrator.')
+  }
+
+  const { salt, passwordHash } = await derivePassword(password)
+  const credential = await env.DB.prepare(
+    `INSERT OR IGNORE INTO credentials (user_id, salt, password_hash)
+     SELECT id, ?, ? FROM users WHERE id = ? AND role = 'user'
+       AND NOT EXISTS (SELECT 1 FROM credentials WHERE user_id = ?)`,
+  )
+    .bind(salt, passwordHash, user.id, user.id)
+    .run()
+  if (credential.meta.changes !== 1) {
+    throw new HttpError(409, 'This email is not approved for registration or its account is already set up. Contact your administrator.')
+  }
+
+  const token = randomToken()
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.batch([
+    env.DB.prepare('UPDATE users SET name = ? WHERE id = ?').bind(name, user.id),
+    env.DB.prepare(
+      'INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)',
+    ).bind(await sha256(token), user.id, now + SESSION_SECONDS, now),
+  ])
+
+  return json(
+    { user: { id: user.id, name, email, role: 'user' } },
+    201,
+    { 'Set-Cookie': sessionCookie(token, request) },
+  )
+}
+
 async function logout(request: Request, env: Env): Promise<Response> {
   requireSameOrigin(request)
   const token = cookieValue(request, 'quiz_session')
@@ -418,33 +468,18 @@ async function listUsers(request: Request, env: Env): Promise<Response> {
 
 async function createOrUpdateUser(request: Request, env: Env): Promise<Response> {
   requireSameOrigin(request)
-  const body = await readJson<{ name?: string; email?: string; password?: string }>(request)
+  const body = await readJson<{ email?: string }>(request)
   const email = normalizeEmail(typeof body.email === 'string' ? body.email : '')
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
-  const password = typeof body.password === 'string' ? body.password : ''
-  if (!validEmail(email) || !name || password.length < 8 || password.length > 128) {
-    throw new HttpError(400, 'Provide a valid email, a name, and a password between 8 and 128 characters.')
+  if (!validEmail(email)) {
+    throw new HttpError(400, 'Provide a valid email address.')
   }
-  const { salt, passwordHash } = await derivePassword(password)
-  const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>()
-  const userId = existing?.id ?? crypto.randomUUID()
-  const savedUser = await env.DB.prepare(
-    `INSERT INTO users (id, email, name, role) VALUES (?, ?, ?, 'user')
-     ON CONFLICT(email) DO UPDATE SET name = excluded.name
-     RETURNING id`,
+  const result = await env.DB.prepare(
+    `INSERT OR IGNORE INTO users (id, email, name, role)
+     VALUES (?, ?, ?, 'user')`,
   )
-    .bind(userId, email, name)
-    .first<{ id: string }>()
-  if (!savedUser) throw new HttpError(500, 'Could not save the user account.')
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO credentials (user_id, salt, password_hash) VALUES (?, ?, ?)
-       ON CONFLICT(user_id) DO UPDATE SET salt = excluded.salt,
-       password_hash = excluded.password_hash, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
-    ).bind(savedUser.id, salt, passwordHash),
-    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(savedUser.id),
-  ])
-  return json({ ok: true }, existing ? 200 : 201)
+    .bind(crypto.randomUUID(), email, email.split('@')[0])
+    .run()
+  return json({ added: result.meta.changes === 1 }, result.meta.changes === 1 ? 201 : 200)
 }
 
 async function importApprovedEmails(request: Request, env: Env): Promise<Response> {
@@ -666,6 +701,7 @@ async function routeApi(request: Request, env: Env): Promise<Response> {
   }
   if (path === '/api/setup' && method === 'POST') return setupAdmin(request, env)
   if (path === '/api/login' && method === 'POST') return login(request, env)
+  if (path === '/api/register' && method === 'POST') return registerUser(request, env)
   if (path === '/api/logout' && method === 'POST') return logout(request, env)
 
   const user = await currentUser(request, env)

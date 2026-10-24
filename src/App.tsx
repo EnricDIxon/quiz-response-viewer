@@ -355,6 +355,16 @@ function App() {
     return result.user
   }
 
+  const register = async (name: string, email: string, password: string) => {
+    const result = await api<{ user: User }>('/api/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
+    })
+    setCurrentUser(result.user)
+    setError(null)
+    return result.user
+  }
+
   const logout = async () => {
     try {
       await api('/api/logout', { method: 'POST', body: '{}' })
@@ -390,6 +400,10 @@ function App() {
         <Route
           path="/login"
           element={currentUser ? <Navigate to={currentUser.role === 'admin' ? '/admin' : '/dashboard'} replace /> : <LoginPage onLogin={login} />}
+        />
+        <Route
+          path="/register"
+          element={currentUser ? <Navigate to={currentUser.role === 'admin' ? '/admin' : '/dashboard'} replace /> : <RegisterPage onRegister={register} />}
         />
         <Route
           path="/dashboard"
@@ -468,13 +482,49 @@ function LoginPage({ onLogin }: { onLogin: (email: string, password: string) => 
   }
   return (
     <div className="auth-shell"><div className="auth-card">
-      <div className="auth-header"><p className="eyebrow">Quiz response viewer</p><h1>Sign in</h1><p>Use the email and password created by your administrator.</p></div>
+      <div className="auth-header"><p className="eyebrow">Quiz response viewer</p><h1>User sign in</h1><p>Sign in with the approved email and password for your account.</p></div>
       <form className="auth-form" onSubmit={(event) => void submit(event)}>
         <label>Login email<input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
         <label>Password<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
         {error ? <p className="error-banner" role="alert">{error}</p> : null}
         <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Checking…' : 'Sign in'}</button>
       </form>
+      <p className="auth-switch">Approved by your administrator? <Link to="/register">Set up your password</Link></p>
+    </div></div>
+  )
+}
+
+function RegisterPage({ onRegister }: { onRegister: (name: string, email: string, password: string) => Promise<User> }) {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const navigate = useNavigate()
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const user = await onRegister(name, email, password)
+      navigate(user.role === 'admin' ? '/admin' : '/dashboard')
+    } catch (registrationError) {
+      setError(registrationError instanceof Error ? registrationError.message : 'Could not set up your account.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="auth-shell"><div className="auth-card">
+      <div className="auth-header"><p className="eyebrow">Quiz response viewer</p><h1>Set up your account</h1><p>Use the email address your administrator approved, then choose your own password.</p></div>
+      <form className="auth-form" onSubmit={(event) => void submit(event)}>
+        <label>Your name<input autoComplete="name" required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} /></label>
+        <label>Approved email<input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>Create password (8+ characters)<input type="password" autoComplete="new-password" minLength={8} maxLength={128} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        {error ? <p className="error-banner" role="alert">{error}</p> : null}
+        <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Creating account…' : 'Create account'}</button>
+      </form>
+      <p className="auth-switch">Already set up your password? <Link to="/login">Sign in</Link></p>
     </div></div>
   )
 }
@@ -611,9 +661,7 @@ function AdminPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
 
   const refresh = async () => {
     const [nextOverview, nextUsers] = await Promise.all([
@@ -641,18 +689,21 @@ function AdminPage() {
     return () => window.clearTimeout(timer)
   }, [searchEmail])
 
-  const saveAccount = async (event: React.FormEvent) => {
+  const approveEmail = async (event: React.FormEvent) => {
     event.preventDefault()
     setBusy(true)
     setError(null)
     setMessage(null)
     try {
-      await api('/api/admin/users', { method: 'POST', body: JSON.stringify({ name, email, password }) })
-      setPassword('')
-      setMessage('Account saved to the shared database.')
+      const result = await api<{ added: boolean }>('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      })
+      setEmail('')
+      setMessage(result.added ? 'Email approved. The user can now set up their own password.' : 'This email is already approved.')
       await refresh()
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Could not save the account.')
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : 'Could not approve this email.')
     } finally { setBusy(false) }
   }
 
@@ -664,7 +715,7 @@ function AdminPage() {
         method: 'POST',
         body: JSON.stringify({ emails: result.emails }),
       })
-      setMessage(`${response.added} approved email${response.added === 1 ? '' : 's'} added. Set passwords before users can sign in.`)
+      setMessage(`${response.added} approved email${response.added === 1 ? '' : 's'} added. Users can set their own passwords from the sign-in page.`)
       if (result.errors.length) setError(result.errors.join(' '))
       await refresh()
     } catch (uploadError) {
@@ -764,13 +815,11 @@ function AdminPage() {
           <p>Import a CSV/XLSX with an Email column. Valid addresses are saved in the shared D1 registry.</p>
           <label className="file-picker"><span>Choose approved email list</span><input type="file" accept=".csv,.xlsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) void addEmailList(file); event.currentTarget.value = '' }} /></label>
           <hr />
-          <div className="panel-header"><h3>Create or update account</h3></div>
-          <p>Passwords are salted and PBKDF2-SHA-256 hashed on the server, separate from the email registry.</p>
-          <form className="auth-form" onSubmit={(event) => void saveAccount(event)}>
-            <label className="field-label">Name<input required value={name} onChange={(event) => setName(event.target.value)} /></label>
-            <label className="field-label">Login email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label className="field-label">Set password (8+ characters)<input type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-            <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save account'}</button>
+          <div className="panel-header"><h3>Approve a user email</h3></div>
+          <p>Users create their own password after their email has been approved.</p>
+          <form className="auth-form" onSubmit={(event) => void approveEmail(event)}>
+            <label className="field-label">User email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+            <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Approving…' : 'Approve email'}</button>
           </form>
         </div>
 
@@ -781,7 +830,7 @@ function AdminPage() {
             <li key={user.id}>
               <div><strong>{user.name}</strong><small>{user.email}</small><small>{user.attemptCount ?? 0} response(s)</small></div>
               <span className={`role-pill ${user.role}`}>{user.role}</span>
-              {!user.hasPassword && user.role !== 'admin' ? <span className="status-badge fail">Password not set</span> : null}
+              {!user.hasPassword && user.role !== 'admin' ? <span className="status-badge fail">Awaiting registration</span> : null}
               <button type="button" className="ghost-button small" onClick={() => void inspectUser(user.id)}>Inspect</button>
             </li>
           ))}</ul>

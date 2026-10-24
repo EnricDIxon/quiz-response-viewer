@@ -107,6 +107,17 @@ h1 {
   gap: 18px;
 }
 
+.auth-switch {
+  margin: 20px 0 0;
+  color: #53647f;
+  text-align: center;
+}
+
+.auth-switch a {
+  color: #2457a7;
+  font-weight: 700;
+}
+
 .auth-form label,
 .field-label {
   display: flex;
