@@ -71,17 +71,9 @@ Quiz Response Viewer is a React application served by a Cloudflare Worker. The W
 
 The deployed Worker and its D1 binding are the shared service. Do not use the local Wrangler database when expecting cross-device or simultaneous access. Back up and manage the remote database through Cloudflare's D1 tools.
 
-### Deploy automatically from GitHub
+### Source control and deployments
 
-The source repository is [EnricDIxon/quiz-response-viewer](https://github.com/EnricDIxon/quiz-response-viewer). To make pushes to `main` deploy automatically:
-
-1. In the Cloudflare dashboard, open **Workers & Pages** and select the existing `response_viewer` Worker.
-2. Open **Settings** > **Builds**, choose **Connect**, and authorize GitHub if prompted.
-3. Select `EnricDIxon/quiz-response-viewer` and the `main` branch. Leave the root directory blank.
-4. Set the build command to `npm run build`. Use `npx wrangler deploy` as the deploy command.
-5. Save the build settings. Subsequent pushes to `main` will build and deploy the Worker and frontend.
-
-The Worker name in `wrangler.toml` must remain `response_viewer`. Runtime secrets such as `BOOTSTRAP_SECRET` remain configured in Cloudflare and must not be committed to GitHub. Apply any future D1 schema migrations to the remote database before deploying code that depends on them.
+The source repository is [EnricDIxon/quiz-response-viewer](https://github.com/EnricDIxon/quiz-response-viewer). GitHub is used for source control and backup; it is not currently connected to automatic Cloudflare builds. To publish changes, commit and push them to GitHub, then deploy to Cloudflare with `npm run deploy` from the project directory. Runtime secrets such as `BOOTSTRAP_SECRET` remain configured in Cloudflare and must not be committed to GitHub. Apply future D1 schema migrations to the remote database before deploying code that depends on them.
 
 ## Accounts and password storage
 
