@@ -1,0 +1,15 @@
+name = "response_viewer"
+main = "worker/index.ts"
+compatibility_date = "2026-10-24"
+workers_dev = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "response_viewer"
+database_id = "885da036-bbc9-4b4e-ab3e-b4853a605612"
+migrations_dir = "migrations"

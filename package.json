@@ -1,0 +1,39 @@
+{
+  "name": "answer-viewer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && wrangler dev",
+    "dev:worker": "wrangler dev",
+    "build": "tsc -b && tsc -p tsconfig.worker.json && vite build",
+    "lint": "oxlint",
+    "preview": "wrangler dev",
+    "db:create": "wrangler d1 create response_viewer",
+    "db:migrate:local": "wrangler d1 migrations apply response_viewer --local",
+    "db:migrate:remote": "wrangler d1 migrations apply response_viewer --remote",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "papaparse": "^5.7.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4",
+    "read-excel-file": "^9.3.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261024.1",
+    "@types/node": "^24.19.2",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.88.0",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.4",
+    "wrangler": "^4.152.0"
+  },
+  "overrides": {
+    "undici": "^7.30.1"
+  }
+}
