@@ -532,30 +532,68 @@ th {
   margin: 12px 0 0;
 }
 
+.users-list-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 8px 0 0;
+  scrollbar-color: #aebfe0 #eef3fb;
+  scrollbar-width: thin;
+}
+
 .search-list li {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid #e3ebf9;
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
 }
 
-.search-list div {
+.search-list li + li {
+  margin-top: 8px;
+}
+
+.search-list .user-list-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
 }
 
-.role-pill.user {
-  background: #e8ecff;
-  color: #324a9a;
+.user-list-info strong,
+.user-list-info small {
+  overflow-wrap: anywhere;
 }
 
-.role-pill.admin {
-  background: #efe7ff;
-  color: #5e43b6;
+.user-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.role-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 10px;
+}
+
+.role-indicator.user {
+  background: #3478d4;
+}
+
+.role-indicator.admin {
+  background: #7851c8;
+}
+
+.inspect-button {
+  min-height: 28px;
+  padding: 4px 9px;
+  font-size: 0.78rem;
 }
 
 .import-item {

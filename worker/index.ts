@@ -446,8 +446,7 @@ async function listUsers(request: Request, env: Env): Promise<Response> {
   const search = normalizeEmail(new URL(request.url).searchParams.get('query') ?? '')
   const { results } = await env.DB.prepare(
     `SELECT users.id, users.name, users.email, users.role,
-            EXISTS(SELECT 1 FROM credentials WHERE credentials.user_id = users.id) AS has_password,
-            (SELECT COUNT(*) FROM attempts WHERE attempts.user_id = users.id) AS attempt_count
+            EXISTS(SELECT 1 FROM credentials WHERE credentials.user_id = users.id) AS has_password
      FROM users
      WHERE (? = '' OR instr(users.email, ?) > 0)
      ORDER BY users.email LIMIT 500`,
@@ -461,7 +460,6 @@ async function listUsers(request: Request, env: Env): Promise<Response> {
       email: row.email,
       role: row.role,
       hasPassword: Boolean(row.has_password),
-      attemptCount: row.attempt_count,
     })),
   })
 }

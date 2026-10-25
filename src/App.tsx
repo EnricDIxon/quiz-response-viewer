@@ -20,7 +20,6 @@ type User = {
   email: string
   role: Role
   hasPassword?: boolean
-  attemptCount?: number
 }
 
 type QuestionResult = {
@@ -826,14 +825,18 @@ function AdminPage() {
         <div className="panel">
           <div className="panel-header"><h3>Users</h3></div>
           <label className="field-label">Search by email<input value={searchEmail} onChange={(event) => setSearchEmail(event.target.value)} placeholder="search@example.com" /></label>
-          <ul className="search-list">{filteredUsers.map((user) => (
-            <li key={user.id}>
-              <div><strong>{user.name}</strong><small>{user.email}</small><small>{user.attemptCount ?? 0} response(s)</small></div>
-              <span className={`role-pill ${user.role}`}>{user.role}</span>
-              {!user.hasPassword && user.role !== 'admin' ? <span className="status-badge fail">Awaiting registration</span> : null}
-              <button type="button" className="ghost-button small" onClick={() => void inspectUser(user.id)}>Inspect</button>
-            </li>
-          ))}</ul>
+          <div className="users-list-scroll" aria-label="Approved users">
+            <ul className="search-list">{filteredUsers.map((user) => (
+              <li key={user.id}>
+                <div className="user-list-info"><strong>{user.name}</strong><small>{user.email}</small></div>
+                <div className="user-list-actions">
+                  <span className={`role-indicator ${user.role}`} role="img" aria-label={user.role} title={user.role} />
+                  {!user.hasPassword && user.role !== 'admin' ? <span className="status-badge fail">Awaiting registration</span> : null}
+                  <button type="button" className="ghost-button small inspect-button" onClick={() => void inspectUser(user.id)}>Inspect</button>
+                </div>
+              </li>
+            ))}</ul>
+          </div>
           {inspectUserId ? <div className="user-inspection">
             <h4>Responses for {users.find((user) => user.id === inspectUserId)?.email}</h4>
             {inspection.length ? inspection.map((attempt) => <p key={attempt.id}>{attempt.quizName} — {displayDate(attempt.submittedAt)} — {attempt.totalScore ?? 'Score unavailable'} points</p>) : <p>No responses.</p>}
