@@ -92,11 +92,11 @@ The source repository is [EnricDIxon/quiz-response-viewer](https://github.com/En
 - Blank, malformed, anonymous, and unapproved email rows are not saved as attempts. Anonymous responses can still contribute observed answer options and positive-point answer-key inference for the import.
 - Options are inferred from responses. An answer with points greater than zero is considered correct. A correct option is highlighted in green; a selected incorrect answer is highlighted in red.
 - Each accepted response is saved as an attempt. A SHA-256 fingerprint prevents importing the same file twice. Administrators can inspect users' attempts and remove an import with its attempts.
-- Total points are retained; a maximum score or percentage is not fabricated when the source file does not provide one.
+- Enter the assessment's maximum marks in the import form. Saved scores are shown as earned points out of that maximum, and percentages are calculated from it.
 
 ## Database contents
 
-The D1 schema is in `migrations/0001_initial.sql`. It includes users, separate credentials, sessions, quizzes, import batches, attempts, and login rate limits. Each attempt stores a JSON snapshot of its questions, observed options, inferred correct answers, selected answers, points, and feedback. This keeps each imported response reviewable as it was imported without requiring a separate questions table.
+The D1 schema is in `migrations/`. It includes users, separate credentials, sessions, quizzes, import batches, attempts, and login rate limits. Each attempt stores its total score and configured maximum marks, plus a JSON snapshot of its questions, observed options, inferred correct answers, selected answers, points, and feedback. This keeps each imported response reviewable as it was imported without requiring a separate questions table.
 
 The database is hosted for a deployed app; it is not a `.db` file copied between browsers. Existing browser-local data from the earlier prototype is not migrated automatically.
 

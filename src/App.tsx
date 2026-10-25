@@ -183,7 +183,7 @@ async function readWorkbook(file: File): Promise<{ headers: string[]; rows: unkn
   return { headers, rows: matrix.slice(1), hash }
 }
 
-async function previewResponseFile(file: File, quizName: string, users: User[]): Promise<ImportPreview> {
+async function previewResponseFile(file: File, quizName: string, maxScore: number, users: User[]): Promise<ImportPreview> {
   const { headers, rows, hash } = await readWorkbook(file)
   const emailColumn = findEmailColumn(headers)
   if (emailColumn < 0) throw new Error('A required Email column was not found.')
@@ -251,33 +251,36 @@ async function previewResponseFile(file: File, quizName: string, users: User[]):
   const submittedColumn = normalizedHeaders.findIndex((header) =>
     ['completion time', 'submitted at', 'submission time'].includes(header),
   )
-  const attempts: Attempt[] = accepted.map(({ user, row, sourceRow }) => ({
-    id: '',
-    importId: hash,
-    quizId: '',
-    quizName: quizName.trim(),
-    userId: user.id,
-    email: user.email,
-    sourceRow,
-    submittedAt: parseSpreadsheetDate(submittedColumn < 0 ? '' : row[submittedColumn]),
-    totalScore: totalPointsColumn < 0 ? null : parseNumber(row[totalPointsColumn]),
-    maxScore: null,
-    percentage: null,
-    questions: questionColumns.map(({ header, answerColumn, pointsColumn, feedbackColumn }, index) => {
-      const selectedAnswer = String(row[answerColumn] ?? '').trim()
-      const pointsEarned = pointsColumn < 0 ? null : parseNumber(row[pointsColumn])
-      return {
-        questionNumber: index + 1,
-        questionText: header,
-        options: options[index],
-        correctAnswers: correctAnswers[index],
-        selectedAnswer,
-        pointsEarned,
-        feedback: feedbackColumn < 0 ? '' : String(row[feedbackColumn] ?? '').trim(),
-        isCorrect: pointsEarned === null ? null : pointsEarned > 0,
-      }
-    }),
-  }))
+  const attempts: Attempt[] = accepted.map(({ user, row, sourceRow }) => {
+    const totalScore = totalPointsColumn < 0 ? null : parseNumber(row[totalPointsColumn])
+    return {
+      id: '',
+      importId: hash,
+      quizId: '',
+      quizName: quizName.trim(),
+      userId: user.id,
+      email: user.email,
+      sourceRow,
+      submittedAt: parseSpreadsheetDate(submittedColumn < 0 ? '' : row[submittedColumn]),
+      totalScore,
+      maxScore,
+      percentage: totalScore === null ? null : (totalScore / maxScore) * 100,
+      questions: questionColumns.map(({ header, answerColumn, pointsColumn, feedbackColumn }, index) => {
+        const selectedAnswer = String(row[answerColumn] ?? '').trim()
+        const pointsEarned = pointsColumn < 0 ? null : parseNumber(row[pointsColumn])
+        return {
+          questionNumber: index + 1,
+          questionText: header,
+          options: options[index],
+          correctAnswers: correctAnswers[index],
+          selectedAnswer,
+          pointsEarned,
+          feedback: feedbackColumn < 0 ? '' : String(row[feedbackColumn] ?? '').trim(),
+          isCorrect: pointsEarned === null ? null : pointsEarned > 0,
+        }
+      }),
+    }
+  })
   const previewRows = accepted.slice(0, 8).map(({ row }) =>
     Object.fromEntries(headers.map((header, index) => [header, String(row[index] ?? '')])),
   )
@@ -319,6 +322,13 @@ async function previewEmailList(file: File): Promise<{ emails: string[]; errors:
 function displayDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value || 'Date unavailable' : date.toLocaleString()
+}
+
+function formatScore(attempt: Pick<Attempt, 'totalScore' | 'maxScore'>): string {
+  if (attempt.totalScore === null) return 'Score unavailable'
+  return attempt.maxScore === null
+    ? `${attempt.totalScore} points`
+    : `${attempt.totalScore} / ${attempt.maxScore} points`
 }
 
 function App() {
@@ -570,7 +580,7 @@ function DashboardPage({ currentUser }: { currentUser: User }) {
         {attempts.length ? attempts.map((attempt) => (
           <Link to={`/attempt/${encodeURIComponent(attempt.id)}`} key={attempt.id} className="attempt-card">
             <div><p className="eyebrow">{attempt.quizName}</p><h3>{displayDate(attempt.submittedAt)}</h3></div>
-            <div className="attempt-meta"><span>{attempt.totalScore === null ? 'Score unavailable' : `${attempt.totalScore} points`}</span><span>{attempt.questions.length} questions</span></div>
+            <div className="attempt-meta"><span>{formatScore(attempt)}</span><span>{attempt.questions.length} questions</span></div>
           </Link>
         )) : <div className="empty-state">{error ? 'Response list could not be loaded.' : `No quiz responses are associated with ${currentUser.email}.`}</div>}
       </div>
@@ -614,7 +624,7 @@ function AttemptDetailPage({ currentUser }: { currentUser: User }) {
       </div>
       <div className="summary-banner">
         <div><span>Submitted</span><strong>{displayDate(attempt.submittedAt)}</strong></div>
-        <div><span>Score</span><strong>{attempt.totalScore === null ? 'Not available' : `${attempt.totalScore} points`}</strong></div>
+        <div><span>Score</span><strong>{attempt.totalScore === null ? 'Not available' : formatScore(attempt)}</strong></div>
         <div><span>Correct</span><strong>{counts.correct}</strong></div>
         <div><span>Incorrect</span><strong>{counts.incorrect}</strong></div>
         <div><span>Unanswered</span><strong>{counts.unanswered}</strong></div>
@@ -654,6 +664,7 @@ function AdminPage() {
   const [users, setUsers] = useState<User[]>([])
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [selectedQuiz, setSelectedQuiz] = useState('')
+  const [maxScore, setMaxScore] = useState('')
   const [searchEmail, setSearchEmail] = useState('')
   const [inspectUserId, setInspectUserId] = useState('')
   const [inspection, setInspection] = useState<Attempt[]>([])
@@ -726,8 +737,13 @@ function AdminPage() {
     setError(null)
     setMessage(null)
     if (!selectedQuiz.trim()) { setError('Enter a quiz name before choosing the response file.'); return }
+    const parsedMaxScore = Number(maxScore)
+    if (!maxScore.trim() || !Number.isFinite(parsedMaxScore) || parsedMaxScore <= 0) {
+      setError('Enter a total marks value greater than zero before choosing the response file.')
+      return
+    }
     try {
-      const result = await previewResponseFile(file, selectedQuiz, users)
+      const result = await previewResponseFile(file, selectedQuiz, parsedMaxScore, users)
       setPreview(result)
       if (!result.validRows) setMessage('No response rows match approved user emails. Nothing can be imported.')
     } catch (uploadError) {
@@ -833,8 +849,8 @@ function AdminPage() {
                   <span
                     className={`role-indicator ${user.role === 'admin' ? 'admin' : user.hasPassword ? 'user' : 'unregistered'}`}
                     role="img"
-                    aria-label={user.role === 'admin' ? 'Admin' : user.hasPassword ? 'Registered user' : 'Unregistered user'}
-                    title={user.role === 'admin' ? 'Admin' : user.hasPassword ? 'Registered user' : 'Unregistered user'}
+                    aria-label={user.role === 'admin' ? 'Admin' : user.hasPassword ? 'User' : 'Unregister User'}
+                    title={user.role === 'admin' ? 'Admin' : user.hasPassword ? 'User' : 'Unregister User'}
                   />
                   <button type="button" className="ghost-button small inspect-button" onClick={() => void inspectUser(user.id)}>Inspect</button>
                 </div>
@@ -843,7 +859,7 @@ function AdminPage() {
           </div>
           {inspectUserId ? <div className="user-inspection">
             <h4>Responses for {users.find((user) => user.id === inspectUserId)?.email}</h4>
-            {inspection.length ? inspection.map((attempt) => <p key={attempt.id}>{attempt.quizName} — {displayDate(attempt.submittedAt)} — {attempt.totalScore ?? 'Score unavailable'} points</p>) : <p>No responses.</p>}
+            {inspection.length ? inspection.map((attempt) => <p key={attempt.id}>{attempt.quizName} — {displayDate(attempt.submittedAt)} — {formatScore(attempt)}</p>) : <p>No responses.</p>}
           </div> : null}
         </div>
       </div>
@@ -853,10 +869,11 @@ function AdminPage() {
         <p>Only registered, non-anonymous emails are stored as attempts. All saved attempts and inferred correct answers are shared through D1.</p>
         <div className="upload-controls">
           <label className="field-label">Quiz name<input value={selectedQuiz} onChange={(event) => setSelectedQuiz(event.target.value)} placeholder="Quiz name" /></label>
+          <label className="field-label">Total marks (out of)<input type="number" min="0.01" step="any" required value={maxScore} onChange={(event) => { setMaxScore(event.target.value); setPreview(null) }} placeholder="e.g. 50" /></label>
           <label className="file-picker"><span>Choose response CSV/XLSX file</span><input type="file" accept=".csv,.xlsx" onChange={(event) => { const file = event.target.files?.[0]; if (file) void prepareResponseFile(file); event.currentTarget.value = '' }} /></label>
         </div>
         {preview ? <div className="preview-box">
-          <div className="preview-header"><div><h4>{preview.fileName}</h4><p>{preview.validRows} matched response(s) ready</p></div><button type="button" className="primary-button" disabled={!preview.validRows || busy} onClick={() => void confirmImport()}>{busy ? 'Saving…' : 'Confirm import'}</button></div>
+          <div className="preview-header"><div><h4>{preview.fileName}</h4><p>{preview.validRows} matched response(s) ready · Scores are out of {maxScore} marks</p></div><button type="button" className="primary-button" disabled={!preview.validRows || busy} onClick={() => void confirmImport()}>{busy ? 'Saving…' : 'Confirm import'}</button></div>
           <div className="summary-row"><span>Matched</span><strong>{preview.validRows}</strong><span>Anonymous</span><strong>{preview.anonymousRows}</strong><span>Unmatched</span><strong>{preview.unmatchedRows}</strong><span>Invalid</span><strong>{preview.malformedRows}</strong></div>
           <div className="validation-list">{preview.errors.map((item) => <p key={item}>{item}</p>)}</div>
           <div className="table-wrap"><table><thead><tr>{preview.headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{preview.rows.map((row, index) => <tr key={`${preview.id}-${index}`}>{preview.headers.map((header) => <td key={`${index}-${header}`}>{row[header]}</td>)}</tr>)}</tbody></table></div>

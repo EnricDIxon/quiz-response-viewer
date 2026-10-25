@@ -21,6 +21,7 @@ interface StoredAttempt {
   email: string
   submitted_at: string
   total_score: number | null
+  max_score: number | null
   questions_json: string
 }
 
@@ -40,6 +41,7 @@ interface IncomingAttempt {
   sourceRow: number
   submittedAt: string
   totalScore: number | null
+  maxScore: number
   questions: IncomingQuestion[]
 }
 
@@ -380,6 +382,7 @@ async function listAttempts(user: PublicUser, env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT attempts.id, attempts.import_id, attempts.quiz_id, quizzes.name AS quiz_name,
             attempts.user_id, users.email, attempts.submitted_at, attempts.total_score,
+            attempts.max_score,
             attempts.questions_json
      FROM attempts
      JOIN users ON users.id = attempts.user_id
@@ -409,8 +412,10 @@ function mapAttempt(row: StoredAttempt) {
     email: row.email,
     submittedAt: row.submitted_at,
     totalScore: row.total_score,
-    maxScore: null,
-    percentage: null,
+    maxScore: row.max_score,
+    percentage: row.total_score === null || row.max_score === null
+      ? null
+      : (row.total_score / row.max_score) * 100,
     questions,
   }
 }
@@ -518,6 +523,7 @@ async function inspectUserAttempts(env: Env, userId: string): Promise<Response> 
   const { results } = await env.DB.prepare(
     `SELECT attempts.id, attempts.import_id, attempts.quiz_id, quizzes.name AS quiz_name,
             attempts.user_id, users.email, attempts.submitted_at, attempts.total_score,
+            attempts.max_score,
             attempts.questions_json
      FROM attempts
      JOIN users ON users.id = attempts.user_id
@@ -601,12 +607,15 @@ async function createImport(request: Request, env: Env, admin: PublicUser): Prom
     const submittedAt = typeof row.submittedAt === 'string' ? row.submittedAt : ''
     const date = submittedAt ? new Date(submittedAt) : null
     const totalScore = row.totalScore === null ? null : Number(row.totalScore)
+    const maxScore = Number(row.maxScore)
     if (
       !validEmail(email) ||
       !Number.isInteger(sourceRow) ||
       sourceRow < 2 ||
       (date !== null && Number.isNaN(date.getTime())) ||
       (totalScore !== null && !Number.isFinite(totalScore)) ||
+      !Number.isFinite(maxScore) ||
+      maxScore <= 0 ||
       !Array.isArray(row.questions) ||
       row.questions.length === 0 ||
       row.questions.length > MAX_QUESTIONS_PER_ATTEMPT
@@ -618,6 +627,7 @@ async function createImport(request: Request, env: Env, admin: PublicUser): Prom
       sourceRow,
       submittedAt: date?.toISOString() ?? '',
       totalScore,
+      maxScore,
       questions: row.questions.map(validateQuestion),
     }
   })
@@ -656,7 +666,7 @@ async function createImport(request: Request, env: Env, admin: PublicUser): Prom
       ).bind(importId, quizId, fileName, fileHash, admin.id, importedCount, skipped, errors),
       env.DB.prepare(
         `INSERT INTO attempts
-         (id, import_id, quiz_id, user_id, source_row, submitted_at, total_score, questions_json)
+         (id, import_id, quiz_id, user_id, source_row, submitted_at, total_score, max_score, questions_json)
          SELECT
            json_extract(input.value, '$.id'),
            ?,
@@ -665,6 +675,7 @@ async function createImport(request: Request, env: Env, admin: PublicUser): Prom
            json_extract(input.value, '$.sourceRow'),
            json_extract(input.value, '$.submittedAt'),
            json_extract(input.value, '$.totalScore'),
+           json_extract(input.value, '$.maxScore'),
            json_extract(input.value, '$.questions')
          FROM json_each(?) AS input
          JOIN users ON users.email = json_extract(input.value, '$.email') AND users.role = 'user'`,
