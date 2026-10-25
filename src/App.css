@@ -590,6 +590,10 @@ th {
   background: #7851c8;
 }
 
+.role-indicator.unregistered {
+  background: #d64545;
+}
+
 .inspect-button {
   min-height: 28px;
   padding: 4px 9px;

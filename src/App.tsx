@@ -830,8 +830,12 @@ function AdminPage() {
               <li key={user.id}>
                 <div className="user-list-info"><strong>{user.name}</strong><small>{user.email}</small></div>
                 <div className="user-list-actions">
-                  <span className={`role-indicator ${user.role}`} role="img" aria-label={user.role} title={user.role} />
-                  {!user.hasPassword && user.role !== 'admin' ? <span className="status-badge fail">Awaiting registration</span> : null}
+                  <span
+                    className={`role-indicator ${user.role === 'admin' ? 'admin' : user.hasPassword ? 'user' : 'unregistered'}`}
+                    role="img"
+                    aria-label={user.role === 'admin' ? 'Admin' : user.hasPassword ? 'Registered user' : 'Unregistered user'}
+                    title={user.role === 'admin' ? 'Admin' : user.hasPassword ? 'Registered user' : 'Unregistered user'}
+                  />
                   <button type="button" className="ghost-button small inspect-button" onClick={() => void inspectUser(user.id)}>Inspect</button>
                 </div>
               </li>
